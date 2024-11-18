@@ -1,92 +1,176 @@
 <?php
+//public/class-exigo-public.php
 class Exigo_Public {
-    private $db_handler;
+    private $api_handler;
 
-    public function __construct($db_handler) {
-        $this->db_handler = $db_handler;
+    public function __construct($api_handler) {
+        $this->api_handler = $api_handler;
         add_action('wp_enqueue_scripts', array($this, 'enqueue_styles'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
+        add_filter('the_content', array($this, 'add_client_registration_fields'));
+        
+        // Hooks AJAX
+        add_action('wp_ajax_process_exigo_form', array($this, 'process_exigo_ajax_form'));
+        add_action('wp_ajax_nopriv_process_exigo_form', array($this, 'process_exigo_ajax_form'));
     }
 
     public function enqueue_styles() {
-        wp_enqueue_style('exigo-public-style', plugin_dir_url(__FILE__) . '../css/exigo-public.css');
+        wp_enqueue_style('exigo-public-style', plugin_dir_url(__FILE__) . '../css/exigo-plugin.css');
     }
 
-    public function check_customer_validation() {
-        if (!is_user_logged_in() || !$this->is_customer_validated()) {
-            wp_safe_redirect(home_url('/registro-cliente'));
-            exit;
-        }
+    public function enqueue_scripts() {
+        wp_enqueue_script('exigo-public-script', plugin_dir_url(__FILE__) . '../js/exigo-public.js', array('jquery'), EXIGO_PLUGIN_VERSION, true);
+        wp_localize_script('exigo-public-script', 'exigo_ajax', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('exigo_ajax_nonce')
+        ));
     }
 
-    public function is_customer_validated() {
-        return isset($_SESSION['customer_validated']) && $_SESSION['customer_validated'] === true;
-    }
-
-    public function modify_checkout_url($url) {
-        if (!$this->is_customer_validated()) {
-            return home_url('/registro-cliente');
-        }
-        return $url;
-    }
 
     public function add_client_registration_fields($content) {
         if (is_page('registro-cliente')) {
             ob_start();
             ?>
-            <div class="exigo-registration-options">
-                <h2>Are you an existing customer?</h2>
+            <div class="exigo-registration-container">
+                <h1 class="exigo-main-title">ARE YOU AN EXISTING CUSTOMER?</h1>
                 
-                <div class="existing-customer">
-                    <h3>Existing Customers</h3>
-                    <form id="exigo-login-form" method="post">
-                        <input type="text" name="username" placeholder="Username or Exigo ID" required>
-                        <input type="password" name="password" placeholder="Password" required>
-                        <input type="submit" name="exigo_login" value="Login">
-                    </form>
-                </div>
+                <div class="exigo-registration-sections">
+                    <!-- Sección New Customers -->
+                    <div class="exigo-section new-customers">
+                        <h2>New Customers</h2>
+                        <p>Gracias por comprar en Stemtech hoy. Si esta es su primera vez comprando con nosotros, o si no tiene una cuenta todavía, haga clic aquí para terminar de procesar su pedido.</p>
+                        
+                        <!-- Paso 1: Buscar Reclutador -->
+                        <div class="registration-step" id="step-recruiter-search">
+                            <form id="exigo-new-customer-form" method="post">
+                                <div class="form-group">
+                                    <label for="recruiter_id">ID del Reclutador</label>
+                                    <input type="text" id="recruiter_id" name="recruiter_id" placeholder="Ingrese el ID del reclutador" required>
+                                </div>
+                                <button type="submit" name="exigo_new_customer" class="exigo-button">Buscar Reclutador</button>
+                            </form>
+                        </div>
 
-                <div class="new-customer">
-                    <h3>New Customers</h3>
-                    <p>Gracias por comprar en Stemtech hoy. Si esta es su primera vez comprando con nosotros, o si no tiene una cuenta todavía, haga clic aquí para terminar de procesar su pedido</p>
-                    <form id="exigo-new-customer-form" method="post">
-                        <input type="text" name="recruiter_id" placeholder="ID del reclutador" required>
-                        <input type="submit" name="exigo_new_customer" value="Continuar">
-                    </form>
+                        <!-- Paso 2: Confirmación del Reclutador -->
+                        <div id="recruiter-info" class="registration-step" style="display: none;">
+                            <h3>Información del Reclutador</h3>
+                            <div class="recruiter-details"></div>
+                            <div class="recruiter-actions">
+                                <button type="button" id="confirm-recruiter" class="exigo-button">Confirmar y Continuar</button>
+                                <button type="button" id="cancel-recruiter" class="exigo-button button-secondary">Buscar Otro</button>
+                            </div>
+                        </div>
+
+                        <!-- Paso 3: Formulario de Registro -->
+                        <form id="exigo-registration-form" class="registration-step" style="display: none;" method="post">
+                            <h3>Información de Registro</h3>
+                            <input type="hidden" name="confirmed_recruiter_id" value="">
+                            
+                            <div class="form-section">
+                                <h4>Información Personal</h4>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="firstName">Nombre</label>
+                                        <input type="text" id="firstName" name="firstName" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="lastName">Apellidos</label>
+                                        <input type="text" id="lastName" name="lastName" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="email">Correo Electrónico</label>
+                                        <input type="email" id="email" name="email" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="phone">Teléfono</label>
+                                        <input type="tel" id="phone" name="phone" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h4>Dirección</h4>
+                                <div class="form-group">
+                                    <label for="address1">Dirección Línea 1</label>
+                                    <input type="text" id="address1" name="address1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="address2">Dirección Línea 2 (Opcional)</label>
+                                    <input type="text" id="address2" name="address2">
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="city">Ciudad</label>
+                                        <input type="text" id="city" name="city" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="state">Estado</label>
+                                        <input type="text" id="state" name="state" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="postalCode">Código Postal</label>
+                                        <input type="text" id="postalCode" name="postalCode" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h4>Información de Cuenta</h4>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="loginName">Nombre de Usuario</label>
+                                        <input type="text" id="loginName" name="loginName" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="password">Contraseña</label>
+                                        <input type="password" id="password" name="password" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="confirmPassword">Confirmar Contraseña</label>
+                                        <input type="password" id="confirmPassword" name="confirmPassword" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" name="exigo_complete_registration" class="exigo-button">Completar Registro</button>
+                                <button type="button" id="back-to-recruiter" class="exigo-button button-secondary">Volver a Reclutador</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Sección Returning Customers -->
+                    <div class="exigo-section returning-customers">
+                        <h2>Returning Customers</h2>
+                        <p>¡Bienvenido de vuelta! Ingrese su nombre de usuario y contraseña para usar la información almacenada en su cuenta.</p>
+                        
+                        <form id="exigo-login-form" method="post">
+                            <div class="form-group">
+                                <label for="username">Nombre de usuario</label>
+                                <input type="text" id="username" name="username" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Contraseña</label>
+                                <input type="password" id="password" name="password" required>
+                            </div>
+                            <button type="submit" name="exigo_login" class="exigo-button">INICIAR SESIÓN</button>
+                        </form>
+                    </div>
                 </div>
 
                 <div id="exigo-loader" style="display: none;">
-                    Verificando información...
+                    <div class="loader-content">
+                        <div class="spinner"></div>
+                        <p>Verificando información...</p>
+                    </div>
                 </div>
             </div>
-
-            <script>
-            jQuery(document).ready(function($) {
-                $('#exigo-login-form, #exigo-new-customer-form').on('submit', function(e) {
-                    e.preventDefault();
-                    $('#exigo-loader').show();
-
-                    var form = $(this);
-                    $.ajax({
-                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                        type: 'POST',
-                        data: form.serialize() + '&action=process_exigo_form',
-                        success: function(response) {
-                            $('#exigo-loader').hide();
-                            if (response.success) {
-                                alert(response.data.message);
-                                window.location.href = response.data.redirect;
-                            } else {
-                                alert(response.data.message);
-                            }
-                        },
-                        error: function() {
-                            $('#exigo-loader').hide();
-                            alert('Ocurrió un error. Por favor, inténtelo de nuevo.');
-                        }
-                    });
-                });
-            });
-            </script>
             <?php
             $registration_content = ob_get_clean();
             $content .= $registration_content;
@@ -95,12 +179,19 @@ class Exigo_Public {
     }
 
     public function process_exigo_ajax_form() {
+        check_ajax_referer('exigo_ajax_nonce', 'security');
+
         if (isset($_POST['exigo_login'])) {
             $this->process_existing_customer();
         } elseif (isset($_POST['exigo_new_customer'])) {
-            $this->process_new_customer();
+            $this->process_recruiter_search();
+        } elseif (isset($_POST['exigo_complete_registration'])) {
+            $this->process_complete_registration();
         } else {
-            wp_send_json_error(['message' => 'Acción no válida']);
+            wp_send_json_error([
+                'message' => 'Acción no válida',
+                'raw_request' => $_POST
+            ]);
         }
     }
 
@@ -108,56 +199,94 @@ class Exigo_Public {
         $username = sanitize_text_field($_POST['username']);
         $password = $_POST['password'];
 
-        $conexion = $this->db_handler->obtener_conexion();
+        $result = $this->api_handler->authenticate_customer($username, $password);
         
-        if ($conexion) {
-            $stmt = $conexion->prepare("SELECT * FROM exigo_clientes WHERE nombre = :username OR id_exigo = :username");
-            $stmt->bindParam(':username', $username);
-            $stmt->execute();
-            
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($user && password_verify($password, $user['password'])) {
-                $_SESSION['customer_validated'] = true;
-                $_SESSION['cliente_id'] = $user['id_exigo'];
-                wp_send_json_success([
-                    'message' => 'Login exitoso. Redirigiendo al carrito...',
-                    'redirect' => wc_get_cart_url()
-                ]);
-            } else {
-                wp_send_json_error(['message' => 'Credenciales inválidas. Por favor, verifique su usuario/ID y contraseña.']);
-            }
+        if ($result['success']) {
+            $_SESSION['customer_validated'] = true;
+            $_SESSION['cliente_id'] = $result['data']['customerID'];
+            wp_send_json_success([
+                'message' => 'Login exitoso',
+                'redirect' => wc_get_cart_url(),
+                'api_response' => $result
+            ]);
         } else {
-            wp_send_json_error(['message' => 'Error de conexión. Por favor, inténtelo de nuevo más tarde.']);
+            wp_send_json_error([
+                'message' => 'Error de autenticación',
+                'api_response' => $result
+            ]);
         }
-        
-        $this->db_handler->cerrar_conexion();
     }
 
-    private function process_new_customer() {
+    private function process_recruiter_search() {
         $recruiter_id = sanitize_text_field($_POST['recruiter_id']);
-
-        $conexion = $this->db_handler->obtener_conexion();
+        $result = $this->api_handler->get_customer($recruiter_id);
         
-        if ($conexion) {
-            $stmt = $conexion->prepare("SELECT * FROM exigo_clientes WHERE id_exigo = :recruiter_id");
-            $stmt->bindParam(':recruiter_id', $recruiter_id);
-            $stmt->execute();
+        error_log('Resultado de búsqueda de reclutador: ' . print_r($result, true));
+        
+        if ($result['success'] && isset($result['data']['customers']) && !empty($result['data']['customers'])) {
+            $recruiter = $result['data']['customers'][0];
             
-            if ($stmt->rowCount() > 0) {
-                $_SESSION['customer_validated'] = true;
-                $_SESSION['recruiter_id'] = $recruiter_id;
-                wp_send_json_success([
-                    'message' => 'ID de reclutador válido. Redirigiendo al checkout...',
-                    'redirect' => wc_get_checkout_url()
-                ]);
-            } else {
-                wp_send_json_error(['message' => 'ID de reclutador no encontrado. Por favor, verifique el ID e intente de nuevo.']);
-            }
+            $response_data = [
+                'success' => true,
+                'message' => 'Reclutador encontrado',
+                'recruiter_info' => [
+                    'id' => $recruiter['customerID'],
+                    'name' => trim($recruiter['firstName'] . ' ' . $recruiter['lastName'])
+                ]
+            ];
+    
+            error_log('Enviando respuesta: ' . print_r($response_data, true));
+            wp_send_json($response_data);
         } else {
-            wp_send_json_error(['message' => 'Error de conexión. Por favor, inténtelo de nuevo más tarde.']);
+            error_log('Error al buscar reclutador: ' . print_r($result, true));
+            wp_send_json_error([
+                'message' => 'Reclutador no encontrado. Por favor, verifique el ID e intente de nuevo.',
+                'debug' => $result
+            ]);
         }
+    }
+    private function process_complete_registration() {
+        $recruiter_id = sanitize_text_field($_POST['confirmed_recruiter_id']);
         
-        $this->db_handler->cerrar_conexion();
+        // Validar que las contraseñas coincidan
+        if ($_POST['password'] !== $_POST['confirmPassword']) {
+            wp_send_json_error([
+                'message' => 'Las contraseñas no coinciden'
+            ]);
+            return;
+        }
+
+        // Preparar datos para la API
+        $customer_data = [
+            'firstName' => sanitize_text_field($_POST['firstName']),
+            'lastName' => sanitize_text_field($_POST['lastName']),
+            'email' => sanitize_email($_POST['email']),
+            'phone' => sanitize_text_field($_POST['phone']),
+            'address1' => sanitize_text_field($_POST['address1']),
+            'address2' => sanitize_text_field($_POST['address2']),
+            'city' => sanitize_text_field($_POST['city']),
+            'state' => sanitize_text_field($_POST['state']),
+            'zip' => sanitize_text_field($_POST['postalCode']),
+            'loginName' => sanitize_text_field($_POST['loginName']),
+            'password' => $_POST['password'],
+            'enrollerId' => $recruiter_id
+        ];
+
+        $result = $this->api_handler->create_customer($customer_data);
+        
+        if ($result['success']) {
+            $_SESSION['customer_validated'] = true;
+            $_SESSION['cliente_id'] = $result['data']['customerID'];
+            wp_send_json_success([
+                'message' => 'Registro exitoso',
+                'redirect' => wc_get_checkout_url(),
+                'api_response' => $result
+            ]);
+        } else {
+            wp_send_json_error([
+                'message' => 'Error al crear la cuenta',
+                'api_response' => $result
+            ]);
+        }
     }
 }
