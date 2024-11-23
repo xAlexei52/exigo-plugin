@@ -128,4 +128,39 @@ jQuery(document).ready(function($) {
     $(document).ajaxComplete(function(event, xhr, settings) {
         console.log('Respuesta AJAX recibida:', xhr.responseJSON);
     });
+
+    $('#exigo-registration-form').on('submit', function(e) {
+        e.preventDefault();
+        showLoader();
+    
+        const formData = new FormData(this);
+        formData.append('action', 'process_exigo_form');
+        formData.append('security', exigo_ajax.nonce);
+        formData.append('exigo_complete_registration', '1');
+    
+        $.ajax({
+            url: exigo_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                hideLoader();
+                console.log('Respuesta registro:', response);
+                
+                if (response.success) {
+                    alert(response.data.message);
+                    window.location.href = response.data.redirect;
+                } else {
+                    alert(response.data.message || 'Error al crear la cuenta');
+                    console.error('Error detallado:', response);
+                }
+            },
+            error: function(xhr, status, error) {
+                hideLoader();
+                console.error('Error en la petición:', {xhr, status, error});
+                alert('Error de conexión. Por favor, inténtelo de nuevo.');
+            }
+        });
+    });
 });

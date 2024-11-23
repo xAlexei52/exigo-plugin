@@ -119,25 +119,36 @@ class Exigo_API_Handler {
     public function create_customer($customer_data) {
         $url = $this->api_base_url . "customers";
         
+        error_log('Datos recibidos para crear cliente: ' . print_r($customer_data, true));
+    
         $api_data = array(
+            // Campos requeridos
             'firstName' => $customer_data['firstName'],
             'lastName' => $customer_data['lastName'],
             'email' => $customer_data['email'],
             'phone' => $customer_data['phone'],
+            'mainAddress1' => $customer_data['mainAddress1'],
+            'mainCity' => $customer_data['mainCity'],
+            'mainState' => $customer_data['mainState'],
+            'mainZip' => $customer_data['mainZip'],
+            'mainCountry' => 'MX',
             'loginName' => $customer_data['loginName'],
             'loginPassword' => $customer_data['password'],
-            'canLogin' => true,
-            'customerType' => 1, // Ajustar según tus necesidades
+            'enrollerID' => intval($customer_data['enrollerId']),
+            
+            // Campos opcionales con valores por defecto
+            'customerType' => 1,
             'customerStatus' => 1,
+            'canLogin' => true,
             'insertEnrollerTree' => true,
-            'enrollerId' => intval($customer_data['enrollerId']),
-            'mainAddress1' => $customer_data['address1'],
-            'mainAddress2' => $customer_data['address2'] ?? '',
-            'mainCity' => $customer_data['city'],
-            'mainState' => $customer_data['state'],
-            'mainZip' => $customer_data['zip'],
-            'mainCountry' => 'MX', // O usar un valor dinámico si es necesario
+            'mainAddress2' => $customer_data['mainAddress2'] ?? '',
+            'currencyCode' => 'mxp',
+            'languageID' => 1,
+            'mainAddressVerified' => true,
+            'defaultWarehouseID' => 3
         );
+    
+        error_log('Datos preparados para API: ' . print_r($api_data, true));
     
         $args = array(
             'method' => 'POST',
@@ -148,11 +159,12 @@ class Exigo_API_Handler {
             'body' => json_encode($api_data)
         );
     
-        error_log('Create customer request: ' . print_r($api_data, true));
-        
+        error_log('Request body: ' . $args['body']);
+    
         $response = wp_remote_post($url, $args);
         
         if (is_wp_error($response)) {
+            error_log('Error en la petición: ' . $response->get_error_message());
             return array(
                 'success' => false,
                 'message' => $response->get_error_message(),
@@ -164,6 +176,9 @@ class Exigo_API_Handler {
         $status = wp_remote_retrieve_response_code($response);
         $data = json_decode($body, true);
     
+        error_log('Respuesta de la API - Status: ' . $status);
+        error_log('Respuesta de la API - Body: ' . print_r($data, true));
+    
         return array(
             'success' => $status === 200 || $status === 201,
             'data' => $data,
@@ -171,7 +186,6 @@ class Exigo_API_Handler {
             'raw_response' => $response
         );
     }
-
     /**
      * Método auxiliar para manejar errores
      */

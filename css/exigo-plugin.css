@@ -64,14 +64,15 @@
 }
 
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
 }
 
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
-    color: #333;
+    color: #495057;
     font-weight: 500;
+    font-size: 0.95rem;
 }
 
 #exigo-login-form input, 
@@ -190,36 +191,38 @@ button[type="submit"]:hover,
     flex: 1;
 }
 
-.button-secondary {
-    background: #6c757d;
-}
-
-.button-secondary:hover {
-    background: #5a6268;
-}
-
 /* Formulario de registro */
 #exigo-registration-form {
     display: none;
-    margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 1px solid #ddd;
+    margin: 2rem auto;
+    padding: 2rem;
+    max-width: 800px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .form-section {
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
 }
 
 .form-section h4 {
     color: #333;
     font-size: 1.25rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #00A9E0;
 }
 
 .form-row {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 @media (min-width: 576px) {
@@ -228,15 +231,57 @@ button[type="submit"]:hover,
     }
 }
 
-.form-actions {
-    display: flex;
-    gap: 1rem;
-    margin-top: 2rem;
+#exigo-registration-form input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    background: #fff;
 }
 
-/* Transiciones suaves */
-.exigo-section {
-    transition: all 0.3s ease-in-out;
+#exigo-registration-form input:focus {
+    border-color: #00A9E0;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 169, 224, 0.1);
+}
+
+#exigo-registration-form label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #495057;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+#exigo-registration-form label.required:after {
+    content: "*";
+    color: #dc3545;
+    margin-left: 4px;
+}
+
+#exigo-registration-form h3 {
+    color: #00A9E0;
+    font-size: 1.75rem;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.form-actions {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    gap: 1rem;
+}
+
+.button-secondary {
+    background: #6c757d;
+}
+
+.button-secondary:hover {
+    background: #5a6268;
 }
 
 /* Responsive */

@@ -70,22 +70,22 @@ class Exigo_Public {
                                 <h4>Información Personal</h4>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="firstName">Nombre</label>
+                                        <label for="firstName" class="required">Nombre</label>
                                         <input type="text" id="firstName" name="firstName" required>
                                     </div>
                                     <div class="form-group">
-                                        <label for="lastName">Apellidos</label>
+                                        <label for="lastName" class="required">Apellidos</label>
                                         <input type="text" id="lastName" name="lastName" required>
                                     </div>
                                 </div>
                                 
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="email">Correo Electrónico</label>
+                                        <label for="email" class="required">Correo Electrónico</label>
                                         <input type="email" id="email" name="email" required>
                                     </div>
                                     <div class="form-group">
-                                        <label for="phone">Teléfono</label>
+                                        <label for="phone" class="required">Teléfono</label>
                                         <input type="tel" id="phone" name="phone" required>
                                     </div>
                                 </div>
@@ -94,7 +94,7 @@ class Exigo_Public {
                             <div class="form-section">
                                 <h4>Dirección</h4>
                                 <div class="form-group">
-                                    <label for="address1">Dirección Línea 1</label>
+                                    <label for="address1" class="required">Dirección Línea 1</label>
                                     <input type="text" id="address1" name="address1" required>
                                 </div>
                                 <div class="form-group">
@@ -104,15 +104,15 @@ class Exigo_Public {
                                 
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="city">Ciudad</label>
+                                        <label for="city" class="required">Ciudad</label>
                                         <input type="text" id="city" name="city" required>
                                     </div>
                                     <div class="form-group">
-                                        <label for="state">Estado</label>
+                                        <label for="state" class="required">Estado</label>
                                         <input type="text" id="state" name="state" required>
                                     </div>
                                     <div class="form-group">
-                                        <label for="postalCode">Código Postal</label>
+                                        <label for="postalCode" class="required">Código Postal</label>
                                         <input type="text" id="postalCode" name="postalCode" required>
                                     </div>
                                 </div>
@@ -122,17 +122,17 @@ class Exigo_Public {
                                 <h4>Información de Cuenta</h4>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="loginName">Nombre de Usuario</label>
+                                        <label for="loginName" class="required">Nombre de Usuario</label>
                                         <input type="text" id="loginName" name="loginName" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="confirmPassword">Contraseña</label>
+                                        <input type="password" id="password" name="password" required>
                                     </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="password">Contraseña</label>
-                                        <input type="password" id="password" name="password" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="confirmPassword">Confirmar Contraseña</label>
+                                        <label for="confirmPassword" class="required">Confirmar Contraseña</label>
                                         <input type="password" id="confirmPassword" name="confirmPassword" required>
                                     </div>
                                 </div>
@@ -245,9 +245,19 @@ class Exigo_Public {
             ]);
         }
     }
+    
     private function process_complete_registration() {
-        $recruiter_id = sanitize_text_field($_POST['confirmed_recruiter_id']);
+        error_log('Iniciando registro de cliente nuevo');
         
+        // Verificar que tenemos el ID del reclutador
+        $recruiter_id = sanitize_text_field($_POST['confirmed_recruiter_id']);
+        if (empty($recruiter_id)) {
+            wp_send_json_error([
+                'message' => 'No se encontró el ID del reclutador'
+            ]);
+            return;
+        }
+    
         // Validar que las contraseñas coincidan
         if ($_POST['password'] !== $_POST['confirmPassword']) {
             wp_send_json_error([
@@ -255,28 +265,45 @@ class Exigo_Public {
             ]);
             return;
         }
-
+    
+        // Validar campos requeridos
+        $required_fields = ['firstName', 'lastName', 'email', 'phone', 'loginName', 'password', 
+                           'address1', 'city', 'state', 'postalCode'];
+        
+        foreach ($required_fields as $field) {
+            if (empty($_POST[$field])) {
+                wp_send_json_error([
+                    'message' => "El campo {$field} es requerido"
+                ]);
+                return;
+            }
+        }
+    
         // Preparar datos para la API
         $customer_data = [
             'firstName' => sanitize_text_field($_POST['firstName']),
             'lastName' => sanitize_text_field($_POST['lastName']),
             'email' => sanitize_email($_POST['email']),
             'phone' => sanitize_text_field($_POST['phone']),
-            'address1' => sanitize_text_field($_POST['address1']),
-            'address2' => sanitize_text_field($_POST['address2']),
-            'city' => sanitize_text_field($_POST['city']),
-            'state' => sanitize_text_field($_POST['state']),
-            'zip' => sanitize_text_field($_POST['postalCode']),
             'loginName' => sanitize_text_field($_POST['loginName']),
             'password' => $_POST['password'],
-            'enrollerId' => $recruiter_id
+            'enrollerId' => $recruiter_id,
+            'mainAddress1' => sanitize_text_field($_POST['address1']),
+            'mainAddress2' => sanitize_text_field($_POST['address2'] ?? ''),
+            'mainCity' => sanitize_text_field($_POST['city']),
+            'mainState' => sanitize_text_field($_POST['state']),
+            'mainZip' => sanitize_text_field($_POST['postalCode'])
         ];
-
+    
+        error_log('Datos del cliente preparados: ' . print_r($customer_data, true));
+    
         $result = $this->api_handler->create_customer($customer_data);
+        
+        error_log('Resultado de crear cliente: ' . print_r($result, true));
         
         if ($result['success']) {
             $_SESSION['customer_validated'] = true;
-            $_SESSION['cliente_id'] = $result['data']['customerID'];
+            $_SESSION['cliente_id'] = $result['data']['customerID'] ?? null;
             wp_send_json_success([
                 'message' => 'Registro exitoso',
                 'redirect' => wc_get_checkout_url(),
@@ -284,7 +311,7 @@ class Exigo_Public {
             ]);
         } else {
             wp_send_json_error([
-                'message' => 'Error al crear la cuenta',
+                'message' => 'Error al crear la cuenta: ' . ($result['data']['message'] ?? 'Error desconocido'),
                 'api_response' => $result
             ]);
         }
