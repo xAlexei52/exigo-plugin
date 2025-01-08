@@ -12,6 +12,10 @@ class Exigo_Public {
         // Hooks AJAX
         add_action('wp_ajax_process_exigo_form', array($this, 'process_exigo_ajax_form'));
         add_action('wp_ajax_nopriv_process_exigo_form', array($this, 'process_exigo_ajax_form'));
+
+        //WooCommerce Hooks
+        add_action('woocommerce_thankyou', array($this, 'process_exigo_order'), 10, 1);
+        add_action('woocommerce_payment_complete', array($this, 'process_exigo_order'), 10, 1);
     }
 
     public function enqueue_styles() {
@@ -314,6 +318,105 @@ class Exigo_Public {
                 'message' => 'Error al crear la cuenta: ' . ($result['data']['message'] ?? 'Error desconocido'),
                 'api_response' => $result
             ]);
+        }
+    }
+
+    public function process_exigo_order($order_id) {
+        // Verificar que no hemos procesado esta orden antes
+        $exigo_order_id = get_post_meta($order_id, '_exigo_order_id', true);
+        if (!empty($exigo_order_id)) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            error_log('No se pudo obtener la orden de WooCommerce: ' . $order_id);
+            return;
+        }
+
+        // Verificar que el cliente está validado
+        if (!isset($_SESSION['customer_validated']) || !isset($_SESSION['cliente_id'])) {
+            error_log('Intento de procesar orden sin cliente validado');
+            return;
+        }
+
+        // Preparar los detalles de los items
+        $details = array();
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            $details[] = array(
+                'itemCode' => $product->get_sku() ?: $product->get_id(),
+                'quantity' => $item->get_quantity(),
+                'warehouseID' => 3, 
+                'priceType' => 1,
+                'price' => $item->get_total(),
+                'description' => $item->get_name(),
+                'currencyCode' => 'mxp'
+            );
+        }
+
+        // Preparar datos de la orden para Exigo
+        $exigo_order_data = array(
+            // Datos del cliente
+            'customerID' => intval($_SESSION['cliente_id']),
+            'customerKey' => $_SESSION['cliente_id'],
+            
+            // Información de la orden
+            'orderStatus' => 1, // O el status que corresponda
+            'orderDate' => $order->get_date_created()->format('c'),
+            'currencyCode' => 'mxp',
+            'warehouseID' => 3,
+            'shipMethodID' => 1, 
+            'priceType' => 1,
+            
+            // Información de envío
+            'firstName' => $order->get_shipping_first_name(),
+            'lastName' => $order->get_shipping_last_name(),
+            'company' => $order->get_shipping_company(),
+            'address1' => $order->get_shipping_address_1(),
+            'address2' => $order->get_shipping_address_2(),
+            'city' => $order->get_shipping_city(),
+            'state' => $order->get_shipping_state(),
+            'zip' => $order->get_shipping_postcode(),
+            'country' => $order->get_shipping_country() ?: 'MX',
+            'email' => $order->get_billing_email(),
+            'phone' => $order->get_billing_phone(),
+            
+            // Notas de la orden
+            'notes' => $order->get_customer_note(),
+            
+            // Detalles de los productos
+            'details' => $details,
+            
+            // Valores por defecto
+            'orderType' => 1,
+            'suppressPackSlipPrice' => false,
+            'overwriteExistingOrder' => false
+        );
+
+        error_log('Enviando orden a Exigo: ' . print_r($exigo_order_data, true));
+
+        // Enviar a Exigo
+        $result = $this->api_handler->create_order($exigo_order_data);
+
+        if ($result['success']) {
+            // Guardar el ID de la orden de Exigo
+            update_post_meta($order_id, '_exigo_order_id', $result['data']['orderID']);
+            
+            // Agregar nota a la orden
+            $order->add_order_note(sprintf(
+                'Orden creada en Exigo correctamente. ID de Exigo: %s',
+                $result['data']['orderID']
+            ));
+        } else {
+            // Registrar el error
+            error_log('Error al crear orden en Exigo: ' . print_r($result, true));
+            
+            // Agregar nota de error a la orden
+            $order->add_order_note(sprintf(
+                'Error al crear orden en Exigo: %s',
+                $result['message'] ?? 'Error desconocido'
+            ));
         }
     }
 }

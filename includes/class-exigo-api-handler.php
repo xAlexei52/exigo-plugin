@@ -211,4 +211,46 @@ class Exigo_API_Handler {
 
         return false;
     }
+
+    public function create_order($order_data) {
+        $url = $this->api_base_url . "orders";
+        
+        error_log('Datos recibidos para crear orden: ' . print_r($order_data, true));
+    
+        $args = array(
+            'method' => 'POST',
+            'headers' => array(
+                'Authorization' => 'Basic ' . $this->api_auth,
+                'Content-Type' => 'application/json'
+            ),
+            'body' => json_encode($order_data)
+        );
+    
+        error_log('Request a Exigo: ' . print_r($args, true));
+    
+        $response = wp_remote_post($url, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('Error en la petición a Exigo: ' . $response->get_error_message());
+            return array(
+                'success' => false,
+                'message' => $response->get_error_message(),
+                'raw_response' => $response
+            );
+        }
+    
+        $body = wp_remote_retrieve_body($response);
+        $status = wp_remote_retrieve_response_code($response);
+        $data = json_decode($body, true);
+    
+        error_log('Respuesta de Exigo - Status: ' . $status);
+        error_log('Respuesta de Exigo - Body: ' . print_r($data, true));
+    
+        return array(
+            'success' => $status === 200 || $status === 201,
+            'data' => $data,
+            'status' => $status,
+            'raw_response' => $response
+        );
+    }
 }

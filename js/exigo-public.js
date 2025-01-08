@@ -89,6 +89,12 @@ jQuery(document).ready(function($) {
         returningCustomers.show();
     });
 
+    $('#back-to-recruiter').on('click', function() {
+        registrationForm.slideUp(); // Ocultar el formulario de registro
+        recruiterInfo.slideDown(); // Mostrar de nuevo la info del reclutador
+        registrationForm[0].reset(); // Opcional: limpiar el formulario
+    });
+
     // Login de cliente existente
     $('#exigo-login-form').on('submit', function(e) {
         e.preventDefault();
