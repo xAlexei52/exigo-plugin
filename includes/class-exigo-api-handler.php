@@ -215,7 +215,10 @@ class Exigo_API_Handler {
     public function create_order($order_data) {
         $url = $this->api_base_url . "orders";
         
-        error_log('Datos recibidos para crear orden: ' . print_r($order_data, true));
+        // Log detallado de la petición
+        error_log('=== INICIO PETICIÓN CREATE ORDER EXIGO ===');
+        error_log('URL: ' . $url);
+        error_log('Datos de orden: ' . print_r($order_data, true));
     
         $args = array(
             'method' => 'POST',
@@ -226,31 +229,61 @@ class Exigo_API_Handler {
             'body' => json_encode($order_data)
         );
     
-        error_log('Request a Exigo: ' . print_r($args, true));
+        // Log de los headers y body
+        error_log('Headers: ' . print_r($args['headers'], true));
+        error_log('Body: ' . $args['body']);
     
         $response = wp_remote_post($url, $args);
         
         if (is_wp_error($response)) {
-            error_log('Error en la petición a Exigo: ' . $response->get_error_message());
+            error_log('Error WP_Error: ' . $response->get_error_message());
             return array(
                 'success' => false,
-                'message' => $response->get_error_message(),
+                'message' => 'Error de conexión: ' . $response->get_error_message(),
                 'raw_response' => $response
             );
         }
     
         $body = wp_remote_retrieve_body($response);
         $status = wp_remote_retrieve_response_code($response);
+        
+        error_log('Código de respuesta: ' . $status);
+        error_log('Respuesta body: ' . $body);
+    
         $data = json_decode($body, true);
+        
+        // Log detallado de la respuesta
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('Error al decodificar JSON: ' . json_last_error_msg());
+            error_log('Body recibido: ' . $body);
+        }
     
-        error_log('Respuesta de Exigo - Status: ' . $status);
-        error_log('Respuesta de Exigo - Body: ' . print_r($data, true));
-    
-        return array(
+        $result = array(
             'success' => $status === 200 || $status === 201,
-            'data' => $data,
             'status' => $status,
             'raw_response' => $response
         );
+    
+        if ($result['success']) {
+            $result['data'] = $data;
+            $result['message'] = 'Orden creada exitosamente';
+        } else {
+            // Manejo detallado de errores
+            if (!empty($data['message'])) {
+                $result['message'] = $data['message'];
+            } elseif (!empty($data['error'])) {
+                $result['message'] = $data['error'];
+            } elseif (!empty($data['errorMessage'])) {
+                $result['message'] = $data['errorMessage'];
+            } else {
+                $result['message'] = 'Error en la respuesta de Exigo (Status: ' . $status . ')';
+            }
+            $result['data'] = $data;
+        }
+    
+        error_log('Resultado final: ' . print_r($result, true));
+        error_log('=== FIN PETICIÓN CREATE ORDER EXIGO ===');
+    
+        return $result;
     }
 }

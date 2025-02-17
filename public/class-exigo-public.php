@@ -15,7 +15,6 @@ class Exigo_Public {
 
         //WooCommerce Hooks
         add_action('woocommerce_thankyou', array($this, 'process_exigo_order'), 10, 1);
-        add_action('woocommerce_payment_complete', array($this, 'process_exigo_order'), 10, 1);
     }
 
     public function enqueue_styles() {
@@ -113,7 +112,41 @@ class Exigo_Public {
                                     </div>
                                     <div class="form-group">
                                         <label for="state" class="required">Estado</label>
-                                        <input type="text" id="state" name="state" required>
+                                        <select id="state" name="state" required>
+                                            <option value="">Seleccione un estado</option>
+                                            <option value="AGU">Aguascalientes</option>
+                                            <option value="BCN">Baja California</option>
+                                            <option value="BCS">Baja California Sur</option>
+                                            <option value="CAM">Campeche</option>
+                                            <option value="CHP">Chiapas</option>
+                                            <option value="CHH">Chihuahua</option>
+                                            <option value="CMX">Ciudad de México</option>
+                                            <option value="COA">Coahuila</option>
+                                            <option value="COL">Colima</option>
+                                            <option value="DUR">Durango</option>
+                                            <option value="GUA">Guanajuato</option>
+                                            <option value="GRO">Guerrero</option>
+                                            <option value="HID">Hidalgo</option>
+                                            <option value="JAL">Jalisco</option>
+                                            <option value="MEX">Estado de México</option>
+                                            <option value="MIC">Michoacán</option>
+                                            <option value="MOR">Morelos</option>
+                                            <option value="NAY">Nayarit</option>
+                                            <option value="NLE">Nuevo León</option>
+                                            <option value="OAX">Oaxaca</option>
+                                            <option value="PUE">Puebla</option>
+                                            <option value="QUE">Querétaro</option>
+                                            <option value="ROO">Quintana Roo</option>
+                                            <option value="SLP">San Luis Potosí</option>
+                                            <option value="SIN">Sinaloa</option>
+                                            <option value="SON">Sonora</option>
+                                            <option value="TAB">Tabasco</option>
+                                            <option value="TAM">Tamaulipas</option>
+                                            <option value="TLA">Tlaxcala</option>
+                                            <option value="VER">Veracruz</option>
+                                            <option value="YUC">Yucatán</option>
+                                            <option value="ZAC">Zacatecas</option>
+                                        </select>
                                     </div>
                                     <div class="form-group">
                                         <label for="postalCode" class="required">Código Postal</label>
@@ -321,102 +354,129 @@ class Exigo_Public {
         }
     }
 
+    private function map_state_code($wp_state) {
+        $state_mapping = [
+            'AG' => 'AGU',  // Aguascalientes
+            'BC' => 'BCN',  // Baja California
+            'BS' => 'BCS',  // Baja California Sur
+            'CM' => 'CAM',  // Campeche
+            'CS' => 'CHP',  // Chiapas
+            'CH' => 'CHH',  // Chihuahua
+            'DF' => 'CMX',  // Ciudad de México
+            'CO' => 'COA',  // Coahuila
+            'CL' => 'COL',  // Colima
+            'DG' => 'DUR',  // Durango
+            'GT' => 'GUA',  // Guanajuato
+            'GR' => 'GRO',  // Guerrero
+            'HG' => 'HID',  // Hidalgo
+            'JA' => 'JAL',  // Jalisco
+            'MX' => 'MEX',  // Estado de México
+            'MI' => 'MIC',  // Michoacán
+            'MO' => 'MOR',  // Morelos
+            'NA' => 'NAY',  // Nayarit
+            'NL' => 'NLE',  // Nuevo León
+            'OA' => 'OAX',  // Oaxaca
+            'PU' => 'PUE',  // Puebla
+            'QT' => 'QUE',  // Querétaro
+            'QR' => 'ROO',  // Quintana Roo
+            'SL' => 'SLP',  // San Luis Potosí
+            'SI' => 'SIN',  // Sinaloa
+            'SO' => 'SON',  // Sonora
+            'TB' => 'TAB',  // Tabasco
+            'TM' => 'TAM',  // Tamaulipas
+            'TL' => 'TLA',  // Tlaxcala
+            'VE' => 'VER',  // Veracruz
+            'YU' => 'YUC',  // Yucatán
+            'ZA' => 'ZAC'   // Zacatecas
+        ];
+
+        return isset($state_mapping[$wp_state]) ? $state_mapping[$wp_state] : $wp_state;
+    }
+
     public function process_exigo_order($order_id) {
-        // Verificar que no hemos procesado esta orden antes
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            error_log('No se pudo obtener la orden WC: ' . $order_id);
+            return;
+        }
+    
+        // Verificar si ya fue procesada
         $exigo_order_id = get_post_meta($order_id, '_exigo_order_id', true);
         if (!empty($exigo_order_id)) {
             return;
         }
-
-        $order = wc_get_order($order_id);
-        if (!$order) {
-            error_log('No se pudo obtener la orden de WooCommerce: ' . $order_id);
-            return;
-        }
-
-        // Verificar que el cliente está validado
+    
+        // Verificar cliente validado
         if (!isset($_SESSION['customer_validated']) || !isset($_SESSION['cliente_id'])) {
-            error_log('Intento de procesar orden sin cliente validado');
+            $order->add_order_note('Error: Cliente no validado en Exigo');
             return;
         }
-
-        // Preparar los detalles de los items
-        $details = array();
+    
+        // Preparar detalles de items
+        $details = [];
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
-            $details[] = array(
-                'itemCode' => $product->get_sku() ?: $product->get_id(),
+            $details[] = [
+                'itemCode' => 1,
                 'quantity' => $item->get_quantity(),
-                'warehouseID' => 3, 
+                'warehouseID' => 1,
                 'priceType' => 1,
-                'price' => $item->get_total(),
+                'price' => floatval($item->get_total()),
                 'description' => $item->get_name(),
                 'currencyCode' => 'mxp'
-            );
+            ];
         }
-
-        // Preparar datos de la orden para Exigo
-        $exigo_order_data = array(
-            // Datos del cliente
+    
+        // Obtener y convertir el código de estado
+        $wp_state = $order->get_shipping_state();
+        $exigo_state = $this->map_state_code($wp_state);
+    
+        // Datos básicos requeridos por la API
+        $exigo_order_data = [
             'customerID' => intval($_SESSION['cliente_id']),
-            'customerKey' => $_SESSION['cliente_id'],
-            
-            // Información de la orden
-            'orderStatus' => 1, // O el status que corresponda
-            'orderDate' => $order->get_date_created()->format('c'),
+            'orderStatus' => null,
+            'orderDate' => current_time('c'),
             'currencyCode' => 'mxp',
-            'warehouseID' => 3,
-            'shipMethodID' => 1, 
+            'warehouseID' => 1,
+            'shipMethodID' => 1,
             'priceType' => 1,
-            
-            // Información de envío
+            'orderType' => null,
             'firstName' => $order->get_shipping_first_name(),
             'lastName' => $order->get_shipping_last_name(),
-            'company' => $order->get_shipping_company(),
             'address1' => $order->get_shipping_address_1(),
             'address2' => $order->get_shipping_address_2(),
             'city' => $order->get_shipping_city(),
-            'state' => $order->get_shipping_state(),
+            'state' => $exigo_state, // Usando el código de estado mapeado
             'zip' => $order->get_shipping_postcode(),
-            'country' => $order->get_shipping_country() ?: 'MX',
+            'country' => 'MX',
             'email' => $order->get_billing_email(),
             'phone' => $order->get_billing_phone(),
-            
-            // Notas de la orden
-            'notes' => $order->get_customer_note(),
-            
-            // Detalles de los productos
             'details' => $details,
+            'suppressPackSlipPrice' => true
+        ];
+    
+        try {
+            $result = $this->api_handler->create_order($exigo_order_data);
             
-            // Valores por defecto
-            'orderType' => 1,
-            'suppressPackSlipPrice' => false,
-            'overwriteExistingOrder' => false
-        );
-
-        error_log('Enviando orden a Exigo: ' . print_r($exigo_order_data, true));
-
-        // Enviar a Exigo
-        $result = $this->api_handler->create_order($exigo_order_data);
-
-        if ($result['success']) {
-            // Guardar el ID de la orden de Exigo
-            update_post_meta($order_id, '_exigo_order_id', $result['data']['orderID']);
-            
-            // Agregar nota a la orden
-            $order->add_order_note(sprintf(
-                'Orden creada en Exigo correctamente. ID de Exigo: %s',
-                $result['data']['orderID']
-            ));
-        } else {
-            // Registrar el error
-            error_log('Error al crear orden en Exigo: ' . print_r($result, true));
-            
-            // Agregar nota de error a la orden
-            $order->add_order_note(sprintf(
-                'Error al crear orden en Exigo: %s',
-                $result['message'] ?? 'Error desconocido'
-            ));
+            if ($result['success']) {
+                update_post_meta($order_id, '_exigo_order_id', $result['data']['orderID']);
+                $order->add_order_note(
+                    sprintf('✅ Orden creada en Exigo exitosamente. ID: %s', 
+                    $result['data']['orderID'])
+                );
+            } else {
+                $error_details = sprintf(
+                    '❌ Error al crear orden en Exigo:\nMensaje: %s\nStatus: %s\nDatos enviados: %s',
+                    $result['message'],
+                    $result['status'],
+                    json_encode($exigo_order_data, JSON_PRETTY_PRINT)
+                );
+                $order->add_order_note($error_details);
+                error_log('Error en Exigo - Datos enviados: ' . print_r($exigo_order_data, true));
+            }
+        } catch (Exception $e) {
+            $order->add_order_note('❌ Error al procesar orden en Exigo: ' . $e->getMessage());
+            error_log('Excepción en Exigo: ' . $e->getMessage());
         }
     }
 }
