@@ -451,7 +451,7 @@ class Exigo_Public {
             'currencyCode' => 'mxp',
             'warehouseID' => 3,
             'shipMethodID' => 1,
-            'priceType' => 3,
+            'priceType' => 1,
             'orderType' => null,
             'firstName' => $order->get_shipping_first_name(),
             'lastName' => $order->get_shipping_last_name(),
