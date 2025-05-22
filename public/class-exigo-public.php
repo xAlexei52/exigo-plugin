@@ -393,146 +393,80 @@ class Exigo_Public {
         return isset($state_mapping[$wp_state]) ? $state_mapping[$wp_state] : $wp_state;
     }
 
-    public function process_exigo_order($order_id) {
+        public function process_exigo_order($order_id) {
         $order = wc_get_order($order_id);
         if (!$order) {
             error_log('No se pudo obtener la orden WC: ' . $order_id);
             return;
         }
-    
+
         // Verificar si ya fue procesada
-        $exigo_order_id = get_post_meta($order_id, '_exigo_order_id', true);
-        if (!empty($exigo_order_id)) {
+        if (get_post_meta($order_id, '_exigo_order_id', true)) {
             return;
         }
-    
-        // Verificar cliente validado
+
+        // Validar sesión del cliente
         if (!isset($_SESSION['customer_validated']) || !isset($_SESSION['cliente_id'])) {
             $order->add_order_note('Error: Cliente no validado en Exigo');
             return;
         }
-    
-        // Preparar detalles de items
+
+        // Preparar items (sin puntos BV/CV, Exigo los calculará)
         $details = [];
-        $total_items = 0;
-        $order_total = 0;
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
-            $item_price = floatval($item->get_total());
-            $order_total += $item_price;
-            
-            // Get SKU from the product object, not the item
-            $sku = '';
-            if ($product) {
-                $sku = $product->get_sku();
-            }
+            $sku = $product ? $product->get_sku() : '';
             
             $details[] = [
-                'itemCode' => $sku, // Using SKU from the product
+                'itemCode' => $sku,
                 'quantity' => $item->get_quantity(),
-                'warehouseID' => 3,
-                'priceType' => 2,
-                'price' => $item_price,
+                'priceEach' => $item->get_total() / $item->get_quantity(), // Precio unitario
+                'priceTotal' => $item->get_total(),
                 'description' => $item->get_name(),
-                'currencyCode' => 'mxp'
+                'warehouseID' => 3,
+                'priceType' => 2, // Debe ser el mismo que en la orden principal
+                'taxable' => $item->get_total() // Asume que el total es sujeto a impuestos
             ];
-            $total_items += $item->get_quantity();
         }
-    
-        // Obtener y convertir el código de estado
-        $wp_state = $order->get_shipping_state();
-        $exigo_state = $this->map_state_code($wp_state);
-    
-        // Datos básicos requeridos por la API
+
+        // Mapear estado de envío
+        $exigo_state = $this->map_state_code($order->get_shipping_state());
+
+        // Datos para la API (priceType = 1)
         $exigo_order_data = [
             'customerID' => intval($_SESSION['cliente_id']),
-            'orderStatus' => null,
+            'orderStatus' => 'Pending',
             'orderDate' => current_time('c'),
             'currencyCode' => 'mxp',
             'warehouseID' => 3,
-            'shipMethodID' => 1,
-            'priceType' => 1,
-            'orderType' => null,
+            'shipMethodID' => 174,
+            'priceType' => 2, // Cliente estándar (Exigo calculará puntos automáticamente)
+            'orderType' => 4, // 4 = Recurring Order
             'firstName' => $order->get_shipping_first_name(),
             'lastName' => $order->get_shipping_last_name(),
             'address1' => $order->get_shipping_address_1(),
-            'address2' => $order->get_shipping_address_2(),
             'city' => $order->get_shipping_city(),
-            'state' => $exigo_state, // Usando el código de estado mapeado
+            'state' => $exigo_state,
             'zip' => $order->get_shipping_postcode(),
             'country' => 'MX',
             'email' => $order->get_billing_email(),
             'phone' => $order->get_billing_phone(),
             'details' => $details,
-            'suppressPackSlipPrice' => true
         ];
-    
+
         try {
             $result = $this->api_handler->create_order($exigo_order_data);
             
             if ($result['success']) {
                 update_post_meta($order_id, '_exigo_order_id', $result['data']['orderID']);
-                
-                // Crear una nota más detallada con información del pedido
-                $order_note = sprintf(
-                    '✅ Orden creada en Exigo exitosamente. ID: %s
-                    📦 Resumen del pedido enviado:
-                    - Cliente ID: %s
-                    - Productos: %d items
-                    - Total enviado: $%s MXN
-                    - Nombre: %s %s
-                    - Dirección: %s, %s, %s, %s
-                    - Email: %s
-                    - Teléfono: %s',
-                    $result['data']['orderID'],
-                    $_SESSION['cliente_id'],
-                    $total_items,
-                    number_format($order_total, 2),
-                    $order->get_shipping_first_name(),
-                    $order->get_shipping_last_name(),
-                    $order->get_shipping_address_1(),
-                    $order->get_shipping_city(),
-                    $exigo_state,
-                    $order->get_shipping_postcode(),
-                    $order->get_billing_email(),
-                    $order->get_billing_phone()
-                );
-                
-                $order->add_order_note($order_note);
+                $order->add_order_note('✅ Orden creada en Exigo. ID: ' . $result['data']['orderID']);
             } else {
-                $error_details = sprintf(
-                    '❌ Error al crear orden en Exigo:
-                    Mensaje: %s
-                    Status: %s
-                    
-                    📊 Datos enviados a la API:
-                    %s
-                    
-                    💰 Total del pedido: $%s MXN
-                    📦 Total items: %d',
-                    $result['message'],
-                    $result['status'],
-                    json_encode($exigo_order_data, JSON_PRETTY_PRINT),
-                    number_format($order_total, 2),
-                    $total_items
-                );
-                $order->add_order_note($error_details);
-                error_log('Error en Exigo - Datos enviados: ' . print_r($exigo_order_data, true));
+                $order->add_order_note('❌ Error en Exigo: ' . $result['message']);
+                error_log('Exigo API Error: ' . $result['message']);
             }
         } catch (Exception $e) {
-            $error_message = sprintf(
-                '❌ Error al procesar orden en Exigo: %s
-                
-                📊 Datos que se intentaron enviar:
-                %s
-                
-                💰 Total del pedido: $%s MXN',
-                $e->getMessage(),
-                json_encode($exigo_order_data, JSON_PRETTY_PRINT),
-                number_format($order_total, 2)
-            );
-            $order->add_order_note($error_message);
-            error_log('Excepción en Exigo: ' . $e->getMessage());
+            $order->add_order_note('❌ Excepción al crear orden: ' . $e->getMessage());
+            error_log('Exigo Exception: ' . $e->getMessage());
         }
     }
 }

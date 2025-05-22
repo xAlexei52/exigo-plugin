@@ -137,7 +137,7 @@ class Exigo_API_Handler {
             'enrollerID' => intval($customer_data['enrollerId']),
             
             // Campos opcionales con valores por defecto
-            'customerType' => 1,
+            'customerType' => 7,
             'customerStatus' => 1,
             'canLogin' => true,
             'insertEnrollerTree' => true,
